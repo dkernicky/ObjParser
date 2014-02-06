@@ -1,6 +1,9 @@
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.FileReader;
+import java.io.IOException;
+import java.io.PrintWriter;
+import java.io.UnsupportedEncodingException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -17,11 +20,11 @@ public class ObjParser {
 	private float scale;
 	private HashMap matList = new HashMap<String, Material>();
 
-	public ObjParser(String filename) throws FileNotFoundException {
-		readObj(filename);
+	public ObjParser(String filename, boolean smoothing, boolean grouping) throws FileNotFoundException {
+		readObj(filename, smoothing, grouping );
 	}
 
-	public void readObj(String filename) throws FileNotFoundException {
+	public void readObj(String filename, boolean smoothing, boolean grouping) throws FileNotFoundException {
 		float minX = -1;
 		float minY = -1;
 		float minZ = -1;
@@ -43,14 +46,15 @@ public class ObjParser {
 			if (lineScanner.hasNext()) {
 				String title = lineScanner.next();
 				if (title.equals("mtllib")) {
-					readMtl(lineScanner.next());
+					readMtl(lineScanner.next()); // load material data
 				} else if (title.equals("v")) {
-					float x = lineScanner.nextFloat();
+					float x = lineScanner.nextFloat(); // retrieve vertex data
 					float y = lineScanner.nextFloat();
 					float z = lineScanner.nextFloat();
 					vertList.add(x);
 					vertList.add(y);
 					vertList.add(z);
+
 					if (x < minX) {
 						minX = x;
 					}
@@ -70,17 +74,17 @@ public class ObjParser {
 						maxZ = z;
 					}
 				} else if (title.equals("vn")) {
+					// retrieve normal data
 					normalList.add(lineScanner.nextFloat());
 					normalList.add(lineScanner.nextFloat());
 					normalList.add(lineScanner.nextFloat());
 
 				} else if (title.equals("usemtl")) {
+					// set current material for face group
 					String s = lineScanner.next();
-					// System.out.println(s);
 					currentMat = (Material) matList.get(s);
-					// System.out.println(currentMat.name);
-
 				} else if (title.equals("f")) {
+					// update vert and normal draw lists from obj face data
 					Scanner stringScanner = new Scanner(lineScanner.next());
 					stringScanner.useDelimiter("//");
 					vertDrawList.add((short) (stringScanner.nextShort() - 1));
@@ -93,14 +97,13 @@ public class ObjParser {
 					stringScanner.useDelimiter("//");
 					vertDrawList.add((short) (stringScanner.nextShort() - 1));
 					normalDrawList.add((short) (stringScanner.nextShort() - 1));
+					// add material for each vertex
 					materialList.add(currentMat);
 					materialList.add(currentMat);
 					materialList.add(currentMat);
 				}
 			}
 		}
-		
-		
 
 		float dX = maxX - minX;
 		float dY = maxY - minY;
@@ -114,6 +117,7 @@ public class ObjParser {
 		tz = 0;
 		// max = 1;
 
+		// populate material draw lists
 		matAmb = new float[materialList.size() * 3];
 		matDiff = new float[materialList.size() * 3];
 		matSpec = new float[materialList.size() * 3];
@@ -134,6 +138,7 @@ public class ObjParser {
 			shininess[n] = materialList.get(n).ns;
 		}
 
+		// populate coord data from vertList, vertDrawList look-up
 		coords = new float[vertDrawList.size() * 3];
 		for (int n = 0; n < vertDrawList.size(); n++) {
 			coords[n * 3] = vertList.get(vertDrawList.get(n) * 3) / max;
@@ -149,7 +154,6 @@ public class ObjParser {
 		for (int n = 0; n < normalDrawList.size(); n++) {
 			blendMap.get(vertDrawList.get(n)).add(
 					normalList.get(normalDrawList.get(n) * 3));
-			// System.out.println(vertDrawList.get(n));
 		}
 		for (ArrayList<Float> l : blendMap) {
 			for (float f : l) {
@@ -158,61 +162,66 @@ public class ObjParser {
 			// System.out.println();
 		}
 
-		boolean condition = true;
-		
+		//boolean condition = true;
+		//condition = false;
+
+		// populate normal data from normalList, normalDrawList look-up
 		normals = new float[normalDrawList.size() * 3];
-		if(condition == false) {
+		if (smoothing == false) {
 			for (int n = 0; n < normalDrawList.size(); n++) {
 				normals[n * 3] = normalList.get(normalDrawList.get(n) * 3);
-				normals[n * 3 + 1] = normalList.get(normalDrawList.get(n) * 3 + 1);
-				normals[n * 3 + 2] = normalList.get(normalDrawList.get(n) * 3 + 2);
+				normals[n * 3 + 1] = normalList
+						.get(normalDrawList.get(n) * 3 + 1);
+				normals[n * 3 + 2] = normalList
+						.get(normalDrawList.get(n) * 3 + 2);
 			}
 		}
-		
 
-		if(condition == true) {
+		// average normals if smoothing enabled
+		if (smoothing == true) {
 			ArrayList<ArrayList<Short>> tallyList = new ArrayList<ArrayList<Short>>();
 			ArrayList<ArrayList<Short>> totalList = new ArrayList<ArrayList<Short>>();
 			int maxValue = Collections.max(vertDrawList);
-			for(int n = 0; n <= maxValue; n ++) {
+			for (int n = 0; n <= maxValue; n++) {
 				tallyList.add(new ArrayList<Short>());
 				totalList.add(new ArrayList<Short>());
-
 			}
 			float[] newNormalList = new float[vertList.size()];
-			for(int n = 0; n < vertDrawList.size(); n ++) {
-				if(!tallyList.get(vertDrawList.get(n)).contains(normalDrawList.get(n)))
-					tallyList.get(vertDrawList.get(n)).add(normalDrawList.get(n));
+			for (int n = 0; n < vertDrawList.size(); n++) {
+				if (!tallyList.get(vertDrawList.get(n)).contains(
+						normalDrawList.get(n)))
+					tallyList.get(vertDrawList.get(n)).add(
+							normalDrawList.get(n));
 				totalList.get(vertDrawList.get(n)).add(normalDrawList.get(n));
 			}
-			for(int i = 0; i < tallyList.size(); i ++) {
+			for (int i = 0; i < tallyList.size(); i++) {
 				ArrayList<Short> l = tallyList.get(i);
 				ArrayList<Short> t = totalList.get(i);
 				double average1 = 0.0;
 				double average2 = 0.0;
 				double average3 = 0.0;
-				for(short s: l) {
-					average1 += normalList.get(s*3);
-					average2 += normalList.get(s*3+1);
-					average3 += normalList.get(s*3+2);
+				for (short s : l) {
+					average1 += normalList.get(s * 3);
+					average2 += normalList.get(s * 3 + 1);
+					average3 += normalList.get(s * 3 + 2);
 				}
-				average1 = average1/l.size();
-				average2 = average2/l.size();
-				average3 = average3/l.size();
-				newNormalList[i*3] = (float) average1;
-				newNormalList[i*3+1] = (float) average2;
-				newNormalList[i*3+2] = (float) average3;
-				//System.out.println(average1 + " " + average2 + " " + average3);
-
+				average1 = average1 / l.size();
+				average2 = average2 / l.size();
+				average3 = average3 / l.size();
+				newNormalList[i * 3] = (float) average1;
+				newNormalList[i * 3 + 1] = (float) average2;
+				newNormalList[i * 3 + 2] = (float) average3;
+				// System.out.println(average1 + " " + average2 + " " +
+				// average3);
 			}
-			for(int n = 0; n < vertDrawList.size(); n ++) {
+			for (int n = 0; n < vertDrawList.size(); n++) {
 				short s = vertDrawList.get(n);
-					normals[n*3] = (float) newNormalList[s*3];
-					normals[n*3+1] = (float) newNormalList[s*3+1];
-					normals[n*3+2] = (float) newNormalList[s*3+2];
+				normals[n * 3] = (float) newNormalList[s * 3];
+				normals[n * 3 + 1] = (float) newNormalList[s * 3 + 1];
+				normals[n * 3 + 2] = (float) newNormalList[s * 3 + 2];
 			}
 		}
-		System.out.println(vertDrawList.size());
+		// System.out.println(vertDrawList.size());
 
 	}
 
@@ -259,9 +268,12 @@ public class ObjParser {
 			}
 		}
 	}
-	
 
-	public void printData() {
+	public void printData() throws FileNotFoundException,
+			UnsupportedEncodingException {
+		PrintWriter writer = new PrintWriter("output.txt", "UTF-8");
+
+		writer.println("public float[] setCoords() {");
 		StringBuilder strCoords = new StringBuilder();
 		strCoords.append("float coords[] = { ");
 		for (int n = 0; n < coords.length; n++) {
@@ -271,8 +283,10 @@ public class ObjParser {
 			else
 				strCoords.append(f + "f };");
 		}
-		//System.out.println(strCoords.toString());
+		writer.println(strCoords.toString());
+		writer.println("return coords; }");
 
+		writer.println("public float[] setNormals() {");
 		StringBuilder strNormals = new StringBuilder();
 		strNormals.append("float normals[] = { ");
 		for (int n = 0; n < normals.length; n++) {
@@ -282,8 +296,10 @@ public class ObjParser {
 			else
 				strNormals.append(f + "f };");
 		}
-		System.out.println(strNormals.toString());
+		writer.println(strNormals.toString());
+		writer.println("return normals; }");
 
+		writer.println("public float[] setAmb() {");
 		StringBuilder strAmb = new StringBuilder();
 		strAmb.append("float amb[] = { ");
 		for (int n = 0; n < matAmb.length; n++) {
@@ -294,8 +310,10 @@ public class ObjParser {
 			else
 				strAmb.append(f + "f };");
 		}
-		// System.out.println(strAmb);
+		writer.println(strAmb);
+		writer.println("return amb; }");
 
+		writer.println("public float[] setDiff() {");
 		StringBuilder strDiff = new StringBuilder();
 		strDiff.append("float diff[] = { ");
 		for (int n = 0; n < matDiff.length; n++) {
@@ -305,8 +323,10 @@ public class ObjParser {
 			else
 				strDiff.append(f + "f };");
 		}
-		// System.out.println(strDiff);
+		writer.println(strDiff);
+		writer.println("return diff; }");
 
+		writer.println("public float[] setSpec() {");
 		StringBuilder strSpec = new StringBuilder();
 		strSpec.append("float spec[] = { ");
 		for (int n = 0; n < matSpec.length; n++) {
@@ -316,8 +336,10 @@ public class ObjParser {
 			else
 				strSpec.append(f + "f };");
 		}
-		// System.out.println(strSpec);
+		writer.println(strSpec);
+		writer.println("return spec; }");
 
+		writer.println("public float[] setShine() {");
 		StringBuilder strShine = new StringBuilder();
 		strShine.append("float shine[] = { ");
 		for (int n = 0; n < shininess.length; n++) {
@@ -327,15 +349,19 @@ public class ObjParser {
 			else
 				strShine.append(f + " };");
 		}
-		// System.out.println(strShine);
+		writer.println(strShine);
+		writer.println("return shine; }");
 
 		// System.out.println(coords.length + " " + matSpec.length + " " +
 		// matDiff.length + " " + matSpec.length + " " + shininess.length);
+		writer.close();
 	}
-	
 
-	public static void main(String[] args) throws FileNotFoundException {
-		ObjParser obj = new ObjParser("hemishphere.obj");
+	public static void main(String[] args) throws IOException {
+		ObjParser obj = new ObjParser("base.obj", false, false);
 		obj.printData();
+
+		ProcessBuilder pb = new ProcessBuilder("Notepad.exe", "output.txt");
+		pb.start();
 	}
 }
