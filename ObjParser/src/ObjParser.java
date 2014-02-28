@@ -19,6 +19,14 @@ public class ObjParser {
 	private int[] shininess;
 	private float scale;
 	private HashMap matList = new HashMap<String, Material>();
+	
+	public static void main(String[] args) throws IOException {
+		ObjParser obj = new ObjParser("rect.obj", false, false);
+		obj.printData();
+
+		ProcessBuilder pb = new ProcessBuilder("Notepad.exe", "output.txt");
+		pb.start();
+	}
 
 	public ObjParser(String filename, boolean smoothing, boolean grouping) throws FileNotFoundException {
 		readObj(filename, smoothing, grouping );
@@ -357,11 +365,5 @@ public class ObjParser {
 		writer.close();
 	}
 
-	public static void main(String[] args) throws IOException {
-		ObjParser obj = new ObjParser("base.obj", false, false);
-		obj.printData();
 
-		ProcessBuilder pb = new ProcessBuilder("Notepad.exe", "output.txt");
-		pb.start();
-	}
 }
